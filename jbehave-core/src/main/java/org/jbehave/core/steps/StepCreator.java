@@ -5,11 +5,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -70,6 +66,10 @@ public class StepCreator {
     private StepMonitor stepMonitor;
     private Paranamer paranamer = new NullParanamer();
     private boolean dryRun = false;
+    private static Map<String, ImmutablePair<String, String>> compositeParameter;
+    private static Map<String, String> test = new HashMap<>();
+    private static boolean flag;
+    private static int count = 0;
 
     public StepCreator(Class<?> stepsType, InjectableStepsFactory stepsFactory,
             StepsContext stepsContext, ParameterConverters parameterConverters, ParameterControls parameterControls,
@@ -129,7 +129,7 @@ public class StepCreator {
             }
         }
         // else return empty map
-        return matchedParameters; 
+        return matchedParameters;
     }
 
     private String[] getArrayOfPairsValues(List<Pair<String, String>> pairs) {
@@ -152,7 +152,7 @@ public class StepCreator {
      * Returns the {@link ParameterName} representations for the method,
      * providing an abstraction that supports both annotated and non-annotated
      * parameters.
-     * 
+     *
      * @param method the Method
      * @return The array of {@link ParameterName}s
      */
@@ -196,7 +196,7 @@ public class StepCreator {
 
     /**
      * Extract parameter names using {@link Named}-annotated parameters
-     * 
+     *
      * @param method the Method with {@link Named}-annotated parameters
      * @return An array of annotated parameter names, which <b>may</b> include
      *         <code>null</code> values for parameters that are not annotated
@@ -211,10 +211,10 @@ public class StepCreator {
         }
         return names;
     }
-    
+
     /**
      * Extract parameter names using {@link FromContext}-annotated parameters
-     * 
+     *
      * @param method the Method with {@link FromContext}-annotated parameters
      * @return An array of annotated parameter names, which <b>may</b> include
      *         <code>null</code> values for parameters that are not annotated
@@ -233,7 +233,7 @@ public class StepCreator {
     /**
      * Returns either the value of the annotation, either {@link Named} or
      * "javax.inject.Named".
-     * 
+     *
      * @param annotation the Annotation
      * @return The annotated value or <code>null</code> if no annotation is
      *         found
@@ -250,7 +250,7 @@ public class StepCreator {
 
     /**
      * Returns the value of the annotation {@link FromContext}.
-     * 
+     *
      * @param annotation the Annotation
      * @return The annotated value or <code>null</code> if no annotation is
      *         found
@@ -266,7 +266,7 @@ public class StepCreator {
     /**
      * Extract parameter names using
      * {@link Paranamer#lookupParameterNames(AccessibleObject, boolean)}
-     * 
+     *
      * @param method the Method inspected by Paranamer
      * @return An array of parameter names looked up by Paranamer
      */
@@ -518,10 +518,10 @@ public class StepCreator {
             else if (overrideWithTableParameters && parameter == null && isTableName(namedParameters, name)) {
                 parameter = namedParameter(namedParameters, name);
                 if (parameter != null) {
-                    monitorUsingTableNameForParameter(name, position, annotated); 
+                    monitorUsingTableNameForParameter(name, position, annotated);
                 }
             }
-            
+
             if (fromContext && parameter == null) {
                 parameter = name;
                 stepMonitor.usingStepsContextParameter(parameter);
@@ -572,13 +572,13 @@ public class StepCreator {
 
     private int numberOfPreviousFromContext(ParameterName[] names, int currentPosition) {
         int number = 0;
-        
+
         for(int i=currentPosition-1; i>=0; i--){
             if (names[i].fromContext) {
                 number++;
             }
         }
-        
+
         return number;
     }
 
@@ -939,15 +939,154 @@ public class StepCreator {
             }
             return parametrisedStep;
         }
-        
-        private void parametriseStep() {
+
+        private void doWithFlagIsFalse(ParameterName[] names, String[] parameterValues)
+        {
+            if (this.composedSteps.size() > 0)
+            {
+                flag = true;
+                count = composedSteps.size();
+                if (compositeParameter == null)
+                {
+                    compositeParameter = new HashMap<>();
+                }
+                for (int i = 0; i < names.length; i++)
+                {
+                    if (names[i].name != null)
+                    {
+                        if (convertedParameters[i] != null)
+                        {
+                            compositeParameter.put(names[i].name,
+                                    new ImmutablePair<>(parameterValues[i], convertedParameters[i].toString()));
+                        }
+                        else
+                            compositeParameter
+                                    .put(names[i].name, new ImmutablePair<>(parameterValues[i], parameterValues[i]));
+                    }
+                }
+            }
+            if (compositeParameter == null || compositeParameter.size() == 0)
+            {
+                flag = false;
+            }
+        }
+
+        private void doWithFlagIsTrue(String[] parameterValues, List<Pair<String, String>> parameterValuesPairsList,
+                ParameterName[] names, Type[] types)
+        {
+            if (count > 0)
+            {
+                for (String key : compositeParameter.keySet())
+                {
+                    int h = 0;
+                    if (namedParameters != null)
+                    {
+                        HashMap<String, String> newCollection = new HashMap<>();
+                        for (String str : namedParameters.keySet())
+                        {
+                                if (str.equals(key))
+                            {
+                                newCollection.put(key, compositeParameter.get(key).right);
+                                String value1 = "";
+                                for(String var: compositeParameter.keySet())
+                                {
+                                    if(parameterValues[h].contains(compositeParameter.get(var).left))
+                                    {
+                                        value1 = parameterValues[h].replace(compositeParameter.get(var).left,
+                                                compositeParameter.get(var).right);
+                                        break;
+                                    }
+                                }
+                                if(value1.length() > 0)
+                                {
+                                    parameterValues[h] = value1;
+
+                                }
+                                h++;
+                                if (parameterValuesPairsList.size() > 0)
+                                {
+                                    for (int index = 0; index < parameterValuesPairsList.size(); index++)
+                                    {
+                                            String value = parameterValuesPairsList.get(index).getValue();
+                                            for(String var: compositeParameter.keySet())
+                                            {
+                                                if(value.contains(compositeParameter.get(var).left))
+                                                {
+                                                    value = value.replace(compositeParameter.get(var).left,
+                                                            compositeParameter.get(var).right);
+                                                }
+                                            }
+                                            parameterValuesPairsList.add(index,
+                                                    new ImmutablePair<>(parameterValuesPairsList.get(index).getLeft(),
+                                                            value));
+                                            parameterValuesPairsList.remove(index + 1);
+                                    }
+                                }
+                            }
+                        }
+                        for (String str : newCollection.keySet())
+                    {
+                        test.put(str, namedParameters.get(str));
+                        namedParameters.remove(str);
+                        namedParameters.put(str, newCollection.get(str));
+                    }
+                    }
+                }
+                count--;
+                convertedParameters = convertParameterValues(parameterValues, types, names);
+            }
+            else
+                convertedParameters = convertParameterValues(parameterValues, types, names);
+            if (compositeParameter != null && names != null && names.length > 0)
+            {
+                for (int i = 0; i < names.length; i++)
+                {
+                    if (names[i].name != null)
+                    {
+                        String left = compositeParameter.get(names[i].name).left;
+                        if (convertedParameters[i] != null)
+                        {
+
+                            compositeParameter.put(names[i].name,
+                                    new ImmutablePair<>(left, convertedParameters[i].toString()));
+                        }
+                        else
+                            compositeParameter
+                                    .put(names[i].name, new ImmutablePair<>(left, parameterValues[i]));
+                    }
+                }
+            }
+            if (compositeParameter != null)
+            {
+                count += compositeParameter.size();
+            }
+        }
+
+        private void saveContext(String[] parameterValues, Type[] types, ParameterName[] names,
+                List<Pair<String, String>> parameterValuesPairsList)
+        {
+            if (!flag)
+            {
+                convertedParameters = convertParameterValues(parameterValues, types, names);
+                doWithFlagIsFalse(names, parameterValues);
+            }
+            else
+            {
+                doWithFlagIsTrue(parameterValues, parameterValuesPairsList, names, types);
+
+            }
+            addNamedParametersToExamplesTables();
+        }
+
+        private void parametriseStep()
+        {
             stepMatcher.find(stepWithoutStartingWord);
             ParameterName[] names = parameterNames(method);
             Type[] types = parameterTypes(method, names);
-            List<Pair<String, String>> parameterValuesPairsList = parameterValuesForStep(namedParameters, types, names, true);
+            List<Pair<String, String>> parameterValuesPairsList = parameterValuesForStep(namedParameters, types, names,
+                    true);
             String[] parameterValues = getArrayOfPairsValues(parameterValuesPairsList);
-            convertedParameters = convertParameterValues(parameterValues, types, names);
-            addNamedParametersToExamplesTables();
+            saveContext(parameterValues, types, names, parameterValuesPairsList);
             parametrisedStep = parametrisedStep(stepAsString, namedParameters, types, parameterValuesPairsList,
                     convertedParameters);
         }
@@ -1020,7 +1159,7 @@ public class StepCreator {
         public StepResult doNotPerform(StoryReporter storyReporter, UUIDExceptionWrapper storyFailureIfItHappened) {
             return ignorable(stepAsString);
         }
-        
+
         @Override
         public String asString(Keywords keywords) {
             return stepAsString;
@@ -1056,7 +1195,7 @@ public class StepCreator {
         private final Paranamer paranamer;
         private final Meta meta;
         private final Type[] parameterTypes;
-        
+
         public MethodInvoker(Method method, ParameterConverters parameterConverters, Paranamer paranamer, Meta meta) {
             this.method = method;
             this.parameterConverters = parameterConverters;
